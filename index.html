@@ -195,7 +195,6 @@ footer.note p { margin: 0 0 6px; max-width: 70ch; }
     </div>
     <div class="lang-tools">
       <input id="search" type="search" placeholder="Buscar idioma (árabe, Українська, wolof…)" aria-label="Buscar idioma" autocomplete="off">
-      <button type="button" class="small" id="sel-all">Todos</button>
       <button type="button" class="small" id="sel-common">Los más habituales</button>
       <button type="button" class="small" id="sel-none">Ninguno</button>
       <button type="button" class="small" id="sel-only" hidden>Ver solo los elegidos</button>
@@ -396,7 +395,6 @@ $('langs').addEventListener('change', e => {
   setLangs([...s]);
 });
 $('search').addEventListener('input', renderLangs);
-$('sel-all').addEventListener('click', () => setLangs(LANGS.map(l => l[0])));
 $('sel-none').addEventListener('click', () => { onlySelected = false; setLangs([]); });
 $('sel-common').addEventListener('click', () => setLangs(COMMON));
 $('sel-only').addEventListener('click', () => { onlySelected = !onlySelected; renderLangs(); });
