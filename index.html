@@ -1,0 +1,716 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pizarra Políglota</title>
+<meta name="description" content="Escribe o dicta una frase en español y proyéctala traducida a todos los idiomas de tu clase a la vez.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap">
+<style>
+/* Layout: una columna de trabajo (frase → idiomas → ajustes); la proyección es una capa a pantalla completa tipo pizarra. */
+:root {
+  --bg: #f4f6f3;
+  --surface: #ffffff;
+  --fg: #17211d;
+  --muted: #5b6b64;
+  --line: #d5ddd8;
+  --accent: #1f6b52;
+  --accent-fg: #ffffff;
+  --accent-soft: #e2efe9;
+  --danger: #a23b2a;
+  --font: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111715; --surface: #18201d; --fg: #e8eeea; --muted: #94a59d; --line: #2c3833;
+    --accent: #5fbf98; --accent-fg: #0d1512; --accent-soft: #1d3129; --danger: #e8806c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111715; --surface: #18201d; --fg: #e8eeea; --muted: #94a59d; --line: #2c3833;
+  --accent: #5fbf98; --accent-fg: #0d1512; --accent-soft: #1d3129; --danger: #e8806c;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 16px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: max(20px, env(safe-area-inset-top, 0px)) max(40px, env(safe-area-inset-bottom, 0px));
+}
+[hidden] { display: none !important; }
+.wrap { max-width: 980px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
+header.top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+h1 { margin: 0; font-size: 1.75rem; letter-spacing: -0.01em; text-wrap: balance; }
+h1 span { color: var(--accent); }
+.tagline { margin: 0; color: var(--muted); }
+h2 { margin: 0; font-size: 1.1rem; text-wrap: balance; }
+.section { display: flex; flex-direction: column; gap: 12px; }
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.hint { color: var(--muted); font-size: 0.9rem; margin: 0; }
+
+/* Frase */
+.composer { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+#phrase {
+  width: 100%; min-height: 120px; resize: vertical; border: 0; outline: none; background: transparent; color: var(--fg);
+  font: 400 clamp(1.4rem, 3.4vw, 2.1rem)/1.3 var(--font);
+}
+.composer:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.actions .spacer { flex: 1; }
+.counter { color: var(--muted); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+
+button, .btn {
+  font: 700 1rem/1 var(--font); border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--fg);
+  padding: 12px 16px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; min-height: 44px;
+}
+button:hover { border-color: var(--accent); }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-size: 1.1rem; padding: 14px 22px; }
+button.primary:hover { filter: brightness(1.08); }
+button.small { font-size: 0.9rem; padding: 8px 12px; min-height: 36px; font-weight: 400; }
+button.link { border: 0; background: none; color: var(--accent); padding: 4px 0; min-height: 0; font-weight: 400; text-decoration: underline; }
+button svg { width: 20px; height: 20px; flex: none; }
+#mic.on { background: var(--danger); border-color: var(--danger); color: #fff; }
+#mic.on svg { animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .35; } }
+kbd { font: inherit; font-size: .8em; border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
+.msg { margin: 0; color: var(--danger); font-weight: 700; }
+
+/* Historial */
+.history { display: flex; gap: 8px; flex-wrap: wrap; }
+.history button { font-weight: 400; max-width: 100%; min-width: 0; }
+.history button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Idiomas */
+.lang-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+#search {
+  flex: 1 1 220px; min-width: 0; font: inherit; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--surface); color: var(--fg); min-height: 44px;
+}
+.langs { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 6px; }
+.lang {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--surface); cursor: pointer; min-width: 0; user-select: none;
+}
+.lang:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.lang input { width: 20px; height: 20px; accent-color: var(--accent); flex: none; margin: 0; }
+.lang .names { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.lang .es { font-weight: 700; }
+.lang .native { text-align: left; color: var(--muted); font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.count-pill { background: var(--accent); color: var(--accent-fg); border-radius: 999px; padding: 2px 10px; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+
+/* Ajustes */
+.settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+.field label { font-weight: 700; }
+.field select, .field input[type=number] {
+  font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); min-height: 40px;
+}
+.field.check { flex-direction: row; align-items: center; gap: 10px; }
+.field.check input { width: 22px; height: 22px; accent-color: var(--accent); margin: 0; }
+footer.note { color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--line); padding-top: 16px; }
+footer.note p { margin: 0 0 6px; max-width: 70ch; }
+
+/* ---------- Proyección (pizarra) ---------- */
+.show {
+  --p-bg: #13221c; --p-fg: #f2f0e6; --p-muted: #9fb5aa; --p-accent: #ffd36e; --p-line: rgba(242,240,230,.14);
+  position: fixed; inset: 0; z-index: 10; background: var(--p-bg); color: var(--p-fg);
+  display: flex; flex-direction: column; overflow: hidden; font-family: var(--font);
+  padding: max(2vh, env(safe-area-inset-top, 0px)) max(2.5vw, env(safe-area-inset-right, 0px)) max(1vh, env(safe-area-inset-bottom, 0px)) max(2.5vw, env(safe-area-inset-left, 0px));
+}
+.show.light { --p-bg: #ffffff; --p-fg: #111111; --p-muted: #5d6763; --p-accent: #155c45; --p-line: rgba(0,0,0,.12); }
+.show-head { flex: none; font-weight: 700; color: var(--p-accent); line-height: 1.15; text-wrap: balance; padding-bottom: 1.2vh; border-bottom: 2px solid var(--p-line); margin-bottom: 1.6vh; overflow-wrap: break-word; }
+.stage { flex: 1; min-height: 0; overflow: hidden; display: flex; align-items: center; }
+.grid { width: 100%; display: grid; grid-template-columns: repeat(var(--cols, 1), minmax(0, 1fr)); gap: 0.55em 1.4em; align-content: center; }
+.item { min-width: 0; display: flex; flex-direction: column; gap: 0.08em; }
+.item .lbl { font-size: 0.42em; color: var(--p-muted); letter-spacing: 0.04em; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.item .lbl b { color: var(--p-fg); font-weight: 700; }
+.item .txt { line-height: 1.22; overflow-wrap: normal; }
+.item .txt:dir(rtl) { text-align: right; }
+.show-foot { flex: none; display: flex; align-items: center; gap: 14px; color: var(--p-muted); font-size: 15px; min-height: 40px; }
+.show-foot .grow { flex: 1; }
+.show-foot button { background: transparent; color: var(--p-muted); border-color: var(--p-line); min-height: 36px; padding: 6px 12px; font-weight: 400; font-size: 15px; }
+.show-foot button:hover { color: var(--p-fg); border-color: var(--p-fg); }
+.dots { display: flex; gap: 6px; }
+.dots i { width: 9px; height: 9px; border-radius: 50%; background: var(--p-line); display: block; }
+.dots i.on { background: var(--p-accent); }
+.show.idle .show-foot { opacity: 0; transition: opacity .6s; }
+.show.idle { cursor: none; }
+.loading { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 4vh; }
+.spinner { width: min(96px, 12vh); aspect-ratio: 1; max-width: 100%; border-radius: 50%; border: min(9px, 1.1vh) solid var(--p-line); border-top-color: var(--p-accent); animation: spin .9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.bar { width: min(560px, 70vw); height: 8px; border-radius: 4px; background: var(--p-line); overflow: hidden; }
+.bar > div { height: 100%; width: 0; background: var(--p-accent); transition: width .2s; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>Pizarra <span>Políglota</span></h1>
+    <p class="tagline">Escribe una frase en español y proyéctala en todos los idiomas de tu clase.</p>
+  </header>
+
+  <section class="section" aria-labelledby="h-frase">
+    <h2 id="h-frase" hidden>Frase</h2>
+    <div class="composer">
+      <textarea id="phrase" maxlength="1500" placeholder="Por ejemplo: Abrid el libro por la página 12." aria-label="Frase en español"></textarea>
+      <div class="actions">
+        <button id="mic" type="button" title="Dictar con el micrófono">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/></svg>
+          <span>Dictar</span>
+        </button>
+        <button id="clear" type="button" class="small">Borrar</button>
+        <span class="spacer"></span>
+        <span class="counter" id="sel-summary"></span>
+        <button id="go" type="button" class="primary">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+          Proyectar
+        </button>
+      </div>
+      <p class="msg" id="msg" role="alert" hidden></p>
+    </div>
+    <p class="hint"><kbd>Ctrl</kbd> + <kbd>Enter</kbd> también proyecta. En la pantalla completa: <kbd>Esc</kbd> vuelve aquí, <kbd>←</kbd> <kbd>→</kbd> cambian de página y <kbd>Espacio</kbd> pausa el paso automático.</p>
+    <p class="hint" id="mic-hint" hidden>Este navegador no permite dictar desde la página. Usa Chrome o Edge, o el micrófono del teclado del móvil.</p>
+  </section>
+
+  <section class="section" id="history-section" aria-labelledby="h-hist" hidden>
+    <div class="section-head">
+      <h2 id="h-hist">Frases recientes</h2>
+      <button type="button" class="link" id="clear-history">Vaciar</button>
+    </div>
+    <div class="history" id="history"></div>
+  </section>
+
+  <section class="section" aria-labelledby="h-langs">
+    <div class="section-head">
+      <h2 id="h-langs">Idiomas en pantalla <span class="count-pill" id="lang-count">0</span></h2>
+    </div>
+    <div class="lang-tools">
+      <input id="search" type="search" placeholder="Buscar idioma (árabe, Українська, wolof…)" aria-label="Buscar idioma" autocomplete="off">
+      <button type="button" class="small" id="sel-all">Todos</button>
+      <button type="button" class="small" id="sel-common">Los más habituales</button>
+      <button type="button" class="small" id="sel-none">Ninguno</button>
+      <button type="button" class="small" id="sel-only" hidden>Ver solo los elegidos</button>
+    </div>
+    <div class="langs" id="langs"></div>
+  </section>
+
+  <section class="section" aria-labelledby="h-set">
+    <h2 id="h-set">Ajustes de la proyección</h2>
+    <div class="settings">
+      <div class="field check"><input type="checkbox" id="opt-original"><label for="opt-original">Mostrar la frase en español arriba</label></div>
+      <div class="field">
+        <label for="opt-theme">Fondo</label>
+        <select id="opt-theme">
+          <option value="dark">Pizarra verde (mejor en proyector)</option>
+          <option value="light">Blanco</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="opt-min">Letra mínima (px)</label>
+        <input type="number" id="opt-min" min="14" max="120" step="2">
+        <span class="hint">Si no caben todos los idiomas con esta letra, se reparten en varias páginas.</span>
+      </div>
+      <div class="field">
+        <label for="opt-secs">Segundos por página</label>
+        <input type="number" id="opt-secs" min="0" max="120" step="1">
+        <span class="hint">0 = pasar de página a mano.</span>
+      </div>
+      <div class="field">
+        <label for="opt-source">Idioma en el que escribes</label>
+        <select id="opt-source">
+          <option value="es">Español</option>
+          <option value="auto">Detectar automáticamente</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="opt-key">Clave de Google Cloud (opcional)</label>
+        <input type="password" id="opt-key" autocomplete="off" spellcheck="false" placeholder="Sin clave: traductor gratuito">
+        <span class="hint">Solo hace falta si el traductor gratuito se bloquea a menudo. Se consigue en Google Cloud activando la API «Cloud Translation». El primer medio millón de caracteres al mes es gratis.</span>
+      </div>
+    </div>
+  </section>
+
+  <footer class="note">
+    <p>La configuración, el borrador y las frases recientes se guardan solo en este navegador.</p>
+    <p>Las traducciones son automáticas (Google Translate). Para frases cortas y claras funcionan bien, pero pueden fallar en idiomas minoritarios o con frases ambiguas.</p>
+  </footer>
+</div>
+
+<div class="show" id="show" hidden>
+  <div class="show-head" id="show-head"></div>
+  <div class="stage" id="stage"><div class="grid" id="grid"></div></div>
+  <div class="show-foot">
+    <div class="dots" id="dots"></div>
+    <span id="page-info"></span>
+    <span class="grow"></span>
+    <button type="button" id="prev" aria-label="Página anterior">←</button>
+    <button type="button" id="pause">Pausar</button>
+    <button type="button" id="next" aria-label="Página siguiente">→</button>
+    <button type="button" id="close">Volver (Esc)</button>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+// [código para Google, nombre en español, nombre en el propio idioma]
+const LANGS = [
+  ['af','Afrikáans','Afrikaans'], ['ak','Akan (twi)','Akan'], ['sq','Albanés','Shqip'], ['de','Alemán','Deutsch'],
+  ['am','Amárico','አማርኛ'], ['ar','Árabe','العربية'], ['hy','Armenio','Հայերեն'], ['as','Asamés','অসমীয়া'],
+  ['ay','Aimara','Aymar aru'], ['az','Azerí','Azərbaycanca'], ['bm','Bambara','Bamanankan'], ['bn','Bengalí','বাংলা'],
+  ['bho','Bhojpuri','भोजपुरी'], ['be','Bielorruso','Беларуская'], ['my','Birmano','မြန်မာ'], ['bs','Bosnio','Bosanski'],
+  ['bg','Búlgaro','Български'], ['kn','Canarés','ಕನ್ನಡ'], ['yue','Cantonés','粵語'], ['ca','Catalán','Català'],
+  ['ceb','Cebuano','Cebuano'], ['cs','Checo','Čeština'], ['ny','Chichewa','Chichewa'], ['zh-CN','Chino simplificado','简体中文'],
+  ['zh-TW','Chino tradicional','繁體中文'], ['si','Cingalés','සිංහල'], ['ko','Coreano','한국어'], ['co','Corso','Corsu'],
+  ['ht','Criollo haitiano','Kreyòl ayisyen'], ['hr','Croata','Hrvatski'], ['da','Danés','Dansk'], ['fa-AF','Darí','دری'],
+  ['dv','Divehi','ދިވެހި'], ['doi','Dogri','डोगरी'], ['sk','Eslovaco','Slovenčina'], ['sl','Esloveno','Slovenščina'],
+  ['eo','Esperanto','Esperanto'], ['et','Estonio','Eesti'], ['eu','Euskera','Euskara'], ['ee','Ewe','Eʋegbe'],
+  ['fi','Finés','Suomi'], ['fr','Francés','Français'], ['fy','Frisón','Frysk'], ['ff','Fula (pular)','Fulfulde'],
+  ['gd','Gaélico escocés','Gàidhlig'], ['cy','Galés','Cymraeg'], ['gl','Gallego','Galego'], ['ka','Georgiano','ქართული'],
+  ['el','Griego','Ελληνικά'], ['gn','Guaraní','Avañeʼẽ'], ['gu','Guyaratí','ગુજરાતી'], ['ha','Hausa','Hausa'],
+  ['haw','Hawaiano','ʻŌlelo Hawaiʻi'], ['iw','Hebreo','עברית'], ['hi','Hindi','हिन्दी'], ['hmn','Hmong','Hmoob'],
+  ['hu','Húngaro','Magyar'], ['ig','Igbo','Igbo'], ['ilo','Ilocano','Ilokano'], ['id','Indonesio','Bahasa Indonesia'],
+  ['en','Inglés','English'], ['ga','Irlandés','Gaeilge'], ['is','Islandés','Íslenska'], ['it','Italiano','Italiano'],
+  ['ja','Japonés','日本語'], ['jw','Javanés','Basa Jawa'], ['km','Jemer','ខ្មែរ'], ['kk','Kazajo','Қазақ тілі'],
+  ['rw','Kinyarwanda','Ikinyarwanda'], ['ky','Kirguís','Кыргызча'], ['gom','Konkani','कोंकणी'], ['kri','Krio','Krio'],
+  ['ku','Kurdo (kurmanyi)','Kurdî'], ['ckb','Kurdo (sorani)','کوردی'], ['lo','Lao','ລາວ'], ['la','Latín','Latina'],
+  ['lv','Letón','Latviešu'], ['ln','Lingala','Lingála'], ['lt','Lituano','Lietuvių'], ['lg','Luganda','Luganda'],
+  ['lb','Luxemburgués','Lëtzebuergesch'], ['mk','Macedonio','Македонски'], ['mai','Maithili','मैथिली'], ['ml','Malayalam','മലയാളം'],
+  ['ms','Malayo','Bahasa Melayu'], ['mg','Malgache','Malagasy'], ['mt','Maltés','Malti'], ['mi','Maorí','Te reo Māori'],
+  ['mr','Maratí','मराठी'], ['mni-Mtei','Meitei (manipurí)','ꯃꯤꯇꯩꯂꯣꯟ'], ['lus','Mizo','Mizo ṭawng'], ['mn','Mongol','Монгол'],
+  ['nl','Neerlandés','Nederlands'], ['ne','Nepalí','नेपाली'], ['no','Noruego','Norsk'], ['or','Oriya','ଓଡ଼ିଆ'],
+  ['om','Oromo','Afaan Oromoo'], ['pa','Panyabí (gurmukhi)','ਪੰਜਾਬੀ'], ['pa-Arab','Panyabí (shahmukhi)','پنجابی'], ['ps','Pastún','پښتو'],
+  ['fa','Persa','فارسی'], ['pl','Polaco','Polski'], ['pt','Portugués','Português'], ['qu','Quechua','Runasimi'],
+  ['rom','Romaní','Romani ćhib'], ['ro','Rumano','Română'], ['ru','Ruso','Русский'], ['sm','Samoano','Gagana Sāmoa'],
+  ['sa','Sánscrito','संस्कृतम्'], ['nso','Sepedi','Sepedi'], ['sr','Serbio','Српски'], ['st','Sesoto','Sesotho'],
+  ['sn','Shona','chiShona'], ['sd','Sindhi','سنڌي'], ['so','Somalí','Soomaali'], ['sw','Suajili','Kiswahili'],
+  ['sv','Sueco','Svenska'], ['su','Sundanés','Basa Sunda'], ['tl','Tagalo (filipino)','Tagalog'], ['th','Tailandés','ไทย'],
+  ['ber','Tamazight (tifinag)','ⵜⴰⵎⴰⵣⵉⵖⵜ'], ['ber-Latn','Tamazight (latino)','Tamaziɣt'], ['ta','Tamil','தமிழ்'], ['tt','Tártaro','Татар'],
+  ['tg','Tayiko','Тоҷикӣ'], ['te','Telugu','తెలుగు'], ['ti','Tigriña','ትግርኛ'], ['ts','Tsonga','Xitsonga'],
+  ['tr','Turco','Türkçe'], ['tk','Turcomano','Türkmençe'], ['uk','Ucraniano','Українська'], ['ug','Uigur','ئۇيغۇرچە'],
+  ['ur','Urdu','اردو'], ['uz','Uzbeko','Oʻzbekcha'], ['vi','Vietnamita','Tiếng Việt'], ['wo','Wolof','Wolof'],
+  ['xh','Xhosa','isiXhosa'], ['yi','Yidis','ייִדיש'], ['yo','Yoruba','Yorùbá'], ['zu','Zulú','isiZulu'],
+];
+const BY_CODE = new Map(LANGS.map(l => [l[0], l]));
+const COMMON = ['en','fr','ar','zh-CN','uk','ru','hi','ur','bn','pt','ro','it','de','tl','wo','ber-Latn','fa','fa-AF','tr','pl','ka','vi'];
+// Código para el atributo lang (para que el navegador elija bien la tipografía)
+const HTML_LANG = { iw: 'he', jw: 'jv', 'zh-CN': 'zh-Hans', 'zh-TW': 'zh-Hant', 'fa-AF': 'fa-AF', 'pa-Arab': 'pa-Arab', ber: 'zgh', 'ber-Latn': 'tzm' };
+const MYMEMORY_CODE = { iw: 'he', jw: 'jv', 'fa-AF': 'prs', 'mni-Mtei': 'mni', 'ber-Latn': 'ber', 'pa-Arab': 'pnb' };
+
+// ---------- Configuración en localStorage ----------
+const KEY = 'pizarra-poliglota-v1';
+const DEFAULTS = { langs: ['en','ar','zh-CN','uk','fr','hi'], showOriginal: true, theme: 'dark', minFont: 32, pageSecs: 10, source: 'es', apiKey: '', history: [], draft: '' };
+let cfg = { ...DEFAULTS };
+try {
+  const saved = JSON.parse(localStorage.getItem(KEY) || 'null');
+  if (saved && typeof saved === 'object') cfg = { ...DEFAULTS, ...saved };
+} catch (e) { /* sin almacenamiento: se usan los valores por defecto */ }
+cfg.langs = (cfg.langs || []).filter(c => BY_CODE.has(c));
+function save() { try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch (e) {} }
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const norm = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+// ---------- Frase ----------
+const ta = $('phrase');
+ta.value = cfg.draft || '';
+ta.addEventListener('input', () => { cfg.draft = ta.value; save(); hideMsg(); });
+ta.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); project(); } });
+$('clear').addEventListener('click', () => { ta.value = ''; cfg.draft = ''; save(); ta.focus(); });
+$('go').addEventListener('click', () => project());
+
+function showMsg(t) { $('msg').textContent = t; $('msg').hidden = false; }
+function hideMsg() { $('msg').hidden = true; }
+
+// ---------- Dictado ----------
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, listening = false;
+if (!SR) { $('mic').hidden = true; $('mic-hint').hidden = false; }
+$('mic').addEventListener('click', () => {
+  if (listening) { rec && rec.stop(); return; }
+  rec = new SR();
+  rec.lang = 'es-ES';
+  rec.interimResults = true;
+  rec.continuous = true;
+  const base = ta.value.trim();
+  rec.onresult = ev => {
+    let said = '';
+    for (let i = 0; i < ev.results.length; i++) said += ev.results[i][0].transcript;
+    said = said.trim();
+    if (said) said = said.charAt(0).toUpperCase() + said.slice(1);
+    ta.value = base ? base + ' ' + said : said;
+    cfg.draft = ta.value; save();
+  };
+  rec.onerror = ev => {
+    if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') showMsg('El navegador no tiene permiso para usar el micrófono. Actívalo en los ajustes del sitio.');
+    else if (ev.error === 'no-speech') showMsg('No se ha oído nada. Pulsa «Dictar» y habla cerca del micrófono.');
+    else if (ev.error !== 'aborted') showMsg('No se ha podido dictar (' + ev.error + '). Puedes escribir la frase.');
+  };
+  rec.onend = () => { listening = false; $('mic').classList.remove('on'); $('mic').querySelector('span').textContent = 'Dictar'; };
+  try {
+    rec.start(); listening = true; hideMsg();
+    $('mic').classList.add('on'); $('mic').querySelector('span').textContent = 'Parar';
+  } catch (e) { showMsg('No se ha podido iniciar el dictado.'); }
+});
+
+// ---------- Idiomas ----------
+let onlySelected = false;
+function renderLangs() {
+  const q = norm($('search').value.trim());
+  const sel = new Set(cfg.langs);
+  const list = LANGS.filter(([code, es, nat]) =>
+    (!onlySelected || sel.has(code)) && (!q || norm(es).includes(q) || norm(nat).includes(q) || code.toLowerCase() === q));
+  $('langs').innerHTML = list.map(([code, es, nat]) => `
+    <label class="lang"><input type="checkbox" value="${esc(code)}" ${sel.has(code) ? 'checked' : ''}>
+      <span class="names"><span class="es">${esc(es)}</span><span class="native" lang="${esc(HTML_LANG[code] || code)}" dir="auto">${esc(nat)}</span></span>
+    </label>`).join('') || '<p class="hint">Ningún idioma coincide con la búsqueda.</p>';
+  updateCount();
+}
+function updateCount() {
+  const n = cfg.langs.length;
+  $('lang-count').textContent = n;
+  $('sel-summary').textContent = n === 1 ? '1 idioma' : n + ' idiomas';
+  $('sel-only').hidden = n === 0 && !onlySelected;
+  $('sel-only').textContent = onlySelected ? 'Ver todos' : 'Ver solo los elegidos';
+}
+function setLangs(codes) {
+  const s = new Set(codes);
+  cfg.langs = LANGS.map(l => l[0]).filter(c => s.has(c));
+  save(); renderLangs();
+}
+$('langs').addEventListener('change', e => {
+  if (e.target.type !== 'checkbox') return;
+  const s = new Set(cfg.langs);
+  e.target.checked ? s.add(e.target.value) : s.delete(e.target.value);
+  setLangs([...s]);
+});
+$('search').addEventListener('input', renderLangs);
+$('sel-all').addEventListener('click', () => setLangs(LANGS.map(l => l[0])));
+$('sel-none').addEventListener('click', () => { onlySelected = false; setLangs([]); });
+$('sel-common').addEventListener('click', () => setLangs(COMMON));
+$('sel-only').addEventListener('click', () => { onlySelected = !onlySelected; renderLangs(); });
+
+// ---------- Ajustes ----------
+$('opt-original').checked = !!cfg.showOriginal;
+$('opt-theme').value = cfg.theme;
+$('opt-min').value = cfg.minFont;
+$('opt-secs').value = cfg.pageSecs;
+$('opt-source').value = cfg.source;
+$('opt-original').addEventListener('change', e => { cfg.showOriginal = e.target.checked; save(); });
+$('opt-theme').addEventListener('change', e => { cfg.theme = e.target.value; save(); });
+$('opt-min').addEventListener('change', e => { cfg.minFont = clamp(+e.target.value || 32, 14, 120); e.target.value = cfg.minFont; save(); });
+$('opt-secs').addEventListener('change', e => { cfg.pageSecs = clamp(Math.round(+e.target.value || 0), 0, 120); e.target.value = cfg.pageSecs; save(); });
+$('opt-source').addEventListener('change', e => { cfg.source = e.target.value; save(); });
+$('opt-key').value = cfg.apiKey;
+$('opt-key').addEventListener('change', e => { cfg.apiKey = e.target.value.trim(); save(); });
+function clamp(v, a, b) { return Math.min(b, Math.max(a, v)); }
+
+// ---------- Historial ----------
+function renderHistory() {
+  const h = cfg.history || [];
+  $('history-section').hidden = h.length === 0;
+  $('history').innerHTML = h.map((t, i) => `<button type="button" data-i="${i}" title="${esc(t)}"><span>${esc(t)}</span></button>`).join('');
+}
+$('history').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  ta.value = cfg.history[+b.dataset.i]; cfg.draft = ta.value; save();
+  project();
+});
+$('clear-history').addEventListener('click', () => { cfg.history = []; save(); renderHistory(); });
+
+// ---------- Traducción ----------
+// Las traducciones se guardan en el navegador: una frase repetida no vuelve a pedirse a internet
+const CACHE_KEY = 'pizarra-poliglota-cache-v1';
+const CACHE_MAX = 3000;
+let cache = new Map();
+try { cache = new Map(JSON.parse(localStorage.getItem(CACHE_KEY) || '[]')); } catch (e) {}
+function saveCache() {
+  try {
+    const entries = [...cache].slice(-CACHE_MAX);
+    localStorage.setItem(CACHE_KEY, JSON.stringify(entries));
+  } catch (e) {}
+}
+let googleBlockedUntil = 0;
+let lastFailure = '';
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function fetchJson(url, opts) {
+  let r;
+  try { r = await fetch(url, opts); }
+  catch (e) { const err = new Error('network'); err.kind = 'network'; throw err; }
+  if (!r.ok) { const err = new Error('HTTP ' + r.status); err.kind = r.status === 429 ? 'limit' : 'http'; err.status = r.status; throw err; }
+  return r.json();
+}
+async function translateGoogle(text, code) {
+  const url = 'https://translate.googleapis.com/translate_a/single?client=gtx&dt=t'
+    + '&sl=' + encodeURIComponent(cfg.source) + '&tl=' + encodeURIComponent(code) + '&q=' + encodeURIComponent(text);
+  const j = await fetchJson(url);
+  return j[0].map(s => s[0]).join('').trim();
+}
+async function translateCloud(text, code) {
+  const body = { q: text, target: code, format: 'text' };
+  if (cfg.source !== 'auto') body.source = cfg.source;
+  const j = await fetchJson('https://translation.googleapis.com/language/translate/v2?key=' + encodeURIComponent(cfg.apiKey), {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  const div = document.createElement('textarea');
+  div.innerHTML = j.data.translations[0].translatedText;
+  return div.value.trim();
+}
+async function translateMyMemory(text, code) {
+  const src = cfg.source === 'auto' ? 'autodetect' : cfg.source;
+  const url = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(text) + '&langpair=' + src + '|' + encodeURIComponent(MYMEMORY_CODE[code] || code);
+  const j = await fetchJson(url);
+  if (j.responseStatus != 200 || !j.responseData || !j.responseData.translatedText) throw new Error('sin traducción');
+  return j.responseData.translatedText.trim();
+}
+async function translate(text, code) {
+  const k = cfg.source + '|' + code + '|' + text;
+  if (cache.has(k)) return cache.get(k);
+  let out = null;
+  // 1) Clave oficial de Google Cloud, si el profesor la ha puesto
+  if (cfg.apiKey) {
+    try { out = await translateCloud(text, code); } catch (e) { lastFailure = e.status === 400 || e.status === 403 ? 'key' : (e.kind || 'http'); }
+  }
+  // 2) Traductor gratuito de Google. Si bloquea por exceso de peticiones, se deja en paz un rato
+  if (out === null && Date.now() > googleBlockedUntil) {
+    for (const wait of [0, 1000, 2500]) {
+      if (wait) await sleep(wait);
+      try { out = await translateGoogle(text, code); break; } catch (e) { lastFailure = e.kind || 'http'; }
+    }
+    if (out === null) googleBlockedUntil = Date.now() + 2 * 60 * 1000;
+  }
+  // 3) Respaldo: MyMemory
+  if (out === null) {
+    try { out = await translateMyMemory(text, code); } catch (e) { if (e.kind === 'limit') lastFailure = 'limit'; throw e; }
+  }
+  cache.set(k, out);
+  return out;
+}
+async function translateAll(text, codes, onProgress) {
+  const results = new Array(codes.length).fill(null);
+  let next = 0, done = 0;
+  lastFailure = '';
+  async function worker() {
+    while (next < codes.length) {
+      const i = next++;
+      const cached = cache.has(cfg.source + '|' + codes[i] + '|' + text);
+      try { results[i] = await translate(text, codes[i]); } catch (e) { results[i] = null; }
+      onProgress(++done, codes.length);
+      if (!cached) await sleep(150);  // ritmo suave para que Google no bloquee
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(2, codes.length) }, worker));
+  saveCache();
+  return results;
+}
+function failureText() {
+  if (!navigator.onLine) return 'No hay conexión a internet.';
+  if (lastFailure === 'key') return 'La clave de Google Cloud no es válida o no tiene activada la API de traducción. Revísala en Ajustes o bórrala.';
+  if (lastFailure === 'limit') return 'El traductor gratuito ha bloqueado temporalmente las peticiones por exceso de uso. Espera unos minutos, elige menos idiomas o añade una clave de Google Cloud en Ajustes.';
+  return 'No se ha podido conectar con el traductor. Abre la página directamente en Chrome o Edge: dentro de otras aplicaciones (por ejemplo, una vista previa) no puede conectarse. Si ya está en Chrome, puede que el traductor gratuito esté bloqueado por exceso de uso: espera unos minutos o añade una clave de Google Cloud en Ajustes.';
+}
+
+// ---------- Proyección ----------
+const show = $('show'), stage = $('stage'), grid = $('grid'), head = $('show-head');
+let session = 0, pages = [], items = [], page = 0, timer = null, paused = false, wentFull = false, wakeLock = null, idleTimer = null, pendingMsg = '';
+
+async function project() {
+  const text = ta.value.trim();
+  if (!text) { showMsg('Escribe o dicta una frase primero.'); ta.focus(); return; }
+  if (!cfg.langs.length) { showMsg('Elige al menos un idioma en la lista de abajo.'); $('search').focus(); return; }
+  hideMsg();
+  if (listening && rec) rec.stop();
+
+  cfg.history = [text, ...(cfg.history || []).filter(t => t !== text)].slice(0, 15);
+  save(); renderHistory();
+
+  const my = ++session;
+  show.className = 'show ' + (cfg.theme === 'light' ? 'light' : 'dark');
+  show.hidden = false;
+  document.body.style.overflow = 'hidden';
+  wentFull = false;
+  if (document.documentElement.requestFullscreen && !document.fullscreenElement) {
+    document.documentElement.requestFullscreen().then(() => { wentFull = true; }).catch(() => {});
+  }
+  try { if (navigator.wakeLock) navigator.wakeLock.request('screen').then(l => { wakeLock = l; }).catch(() => {}); } catch (e) {}
+  poke();
+
+  head.hidden = !cfg.showOriginal;
+  head.textContent = text;
+  head.setAttribute('lang', cfg.source === 'auto' ? '' : cfg.source);
+  stopTimer(); pages = []; page = 0;
+  $('dots').innerHTML = ''; $('page-info').textContent = '';
+  $('pause').hidden = $('prev').hidden = $('next').hidden = true;
+  pendingMsg = '';
+  grid.style.fontSize = '';
+  grid.innerHTML = '<div class="loading" role="progressbar" aria-label="Traduciendo"><div class="spinner"></div><div class="bar"><div id="bar"></div></div></div>';
+  grid.style.setProperty('--cols', 1);
+  await nextFrame(); fitHead();
+
+  const codes = cfg.langs.slice();
+  const res = await translateAll(text, codes, (d, n) => { if (my === session) { const b = $('bar'); if (b) b.style.width = (100 * d / n) + '%'; } });
+  if (my !== session || show.hidden) return;
+
+  items = codes.map((c, i) => ({ code: c, text: res[i] })).filter(it => it.text);
+  // Los avisos van a la pantalla del profesor, nunca a la proyección
+  if (!items.length) { closeShow(); showMsg(failureText()); return; }
+  const failed = codes.filter((c, i) => !res[i]).map(c => BY_CODE.get(c)[1]);
+  pendingMsg = failed.length ? 'No se ha podido traducir a: ' + failed.join(', ') + '. ' + failureText() : '';
+  await nextFrame(); fitHead();
+  layout(0);
+}
+
+function nextFrame() { return new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); }
+
+function fitHead() {
+  if (head.hidden) return;
+  const maxH = window.innerHeight * 0.24;
+  let f = Math.min(window.innerHeight * 0.085, window.innerWidth * 0.06);
+  head.style.fontSize = f + 'px';
+  while (head.scrollHeight > maxH && f > 18) { f *= 0.92; head.style.fontSize = f + 'px'; }
+}
+
+function itemHTML(it) {
+  const [code, es, nat] = BY_CODE.get(it.code);
+  const lang = HTML_LANG[code] || code;
+  const label = nat === es ? `<b>${esc(nat)}</b>` : `<b lang="${esc(lang)}" dir="auto">${esc(nat)}</b> · ${esc(es)}`;
+  return `<div class="item"><div class="lbl">${label}</div><div class="txt" lang="${esc(lang)}" dir="auto">${esc(it.text)}</div></div>`;
+}
+function renderList(list) { grid.innerHTML = list.map(itemHTML).join(''); }
+function maxCols(n) { return Math.max(1, Math.min(n, 6, Math.floor(stage.clientWidth / 220))); }
+function fits(cols, f) {
+  grid.style.setProperty('--cols', cols);
+  grid.style.fontSize = f + 'px';
+  if (grid.offsetHeight > stage.clientHeight + 1) return false;
+  for (const t of grid.querySelectorAll('.txt')) if (t.scrollWidth > t.clientWidth + 1) return false;
+  return true;
+}
+function feasible(list) {
+  renderList(list);
+  const m = maxCols(list.length);
+  for (let c = 1; c <= m; c++) if (fits(c, cfg.minFont)) return true;
+  return false;
+}
+function bestFit(list) {
+  renderList(list);
+  const m = maxCols(list.length);
+  const top = Math.max(cfg.minFont, Math.min(stage.clientHeight * 0.45, 220));
+  let best = null;
+  for (let c = 1; c <= m; c++) {
+    if (!fits(c, cfg.minFont)) continue;
+    let lo = cfg.minFont, hi = top;
+    if (best && !fits(c, best.f + 1)) continue;
+    while (hi - lo > 1) { const mid = (lo + hi) / 2; if (fits(c, mid)) lo = mid; else hi = mid; }
+    if (!best || lo > best.f + 0.5) best = { cols: c, f: lo };
+  }
+  if (!best) best = { cols: 1, f: cfg.minFont };
+  fits(best.cols, Math.floor(best.f));
+}
+function paginate(list) {
+  const out = [];
+  let i = 0;
+  while (i < list.length) {
+    let k;
+    if (feasible(list.slice(i))) k = list.length - i;
+    else {
+      let lo = 1, hi = list.length - i - 1;
+      while (lo < hi) { const mid = Math.ceil((lo + hi) / 2); if (feasible(list.slice(i, i + mid))) lo = mid; else hi = mid - 1; }
+      k = lo;
+    }
+    out.push(list.slice(i, i + k));
+    i += k;
+  }
+  // Reparte por igual si es posible (evita una última página casi vacía)
+  if (out.length > 1) {
+    const per = Math.ceil(list.length / out.length), even = [];
+    for (let j = 0; j < list.length; j += per) even.push(list.slice(j, j + per));
+    if (even.length === out.length && even.every(feasible)) return even;
+  }
+  return out;
+}
+function layout(startPage) {
+  pages = paginate(items);
+  showPage(Math.min(startPage, pages.length - 1));
+  const multi = pages.length > 1;
+  $('pause').hidden = $('prev').hidden = $('next').hidden = !multi;
+  paused = false; $('pause').textContent = 'Pausar';
+  restartTimer();
+}
+function showPage(p) {
+  page = (p + pages.length) % pages.length;
+  bestFit(pages[page]);
+  const multi = pages.length > 1;
+  $('dots').innerHTML = multi ? pages.map((_, i) => `<i class="${i === page ? 'on' : ''}"></i>`).join('') : '';
+  $('page-info').textContent = multi ? `Página ${page + 1} de ${pages.length}` + (paused ? ' · en pausa' : '') : '';
+}
+function restartTimer() {
+  stopTimer();
+  if (pages.length > 1 && cfg.pageSecs > 0 && !paused) timer = setInterval(() => showPage(page + 1), cfg.pageSecs * 1000);
+}
+function stopTimer() { if (timer) clearInterval(timer); timer = null; }
+function go(delta) { if (pages.length > 1) { showPage(page + delta); restartTimer(); } }
+function togglePause() {
+  if (pages.length < 2) return;
+  paused = !paused; $('pause').textContent = paused ? 'Seguir' : 'Pausar';
+  restartTimer(); showPage(page);
+}
+function closeShow() {
+  if (show.hidden) return;
+  session++;
+  stopTimer();
+  show.hidden = true;
+  document.body.style.overflow = '';
+  if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+  if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+  if (pendingMsg) { showMsg(pendingMsg); pendingMsg = ''; }
+  ta.focus(); ta.select();
+}
+function poke() {
+  show.classList.remove('idle');
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => show.classList.add('idle'), 3000);
+}
+
+$('close').addEventListener('click', closeShow);
+$('prev').addEventListener('click', () => go(-1));
+$('next').addEventListener('click', () => go(1));
+$('pause').addEventListener('click', togglePause);
+stage.addEventListener('click', () => go(1));
+show.addEventListener('mousemove', poke);
+document.addEventListener('fullscreenchange', () => {
+  if (document.fullscreenElement) wentFull = true;
+  else if (wentFull && !show.hidden) closeShow();
+});
+document.addEventListener('keydown', e => {
+  if (show.hidden) return;
+  poke();
+  if (e.key === 'Escape') { e.preventDefault(); closeShow(); }
+  else if (e.key === 'ArrowRight' || e.key === 'PageDown') { e.preventDefault(); go(1); }
+  else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); go(-1); }
+  else if (e.key === ' ') { e.preventDefault(); togglePause(); }
+});
+let resizeT = null;
+window.addEventListener('resize', () => {
+  if (show.hidden || !items.length || !pages.length) return;
+  clearTimeout(resizeT);
+  resizeT = setTimeout(() => { fitHead(); layout(page); }, 200);
+});
+
+renderLangs();
+renderHistory();
+})();
+</script>
+</body>
+</html>
