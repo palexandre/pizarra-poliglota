@@ -46,6 +46,7 @@ body {
 }
 [hidden] { display: none !important; }
 .wrap { max-width: 980px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
+.version { font-size: 0.75rem; color: var(--muted); font-variant-numeric: tabular-nums; margin-bottom: -16px; min-height: 1em; }
 header.top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 h1 { margin: 0; font-size: 1.75rem; letter-spacing: -0.01em; text-wrap: balance; }
 h1 span { color: var(--accent); }
@@ -153,6 +154,7 @@ footer.note p { margin: 0 0 6px; max-width: 70ch; }
 </head>
 <body>
 <div class="wrap">
+  <div class="version" id="version"></div>
   <header class="top">
     <h1>Pizarra <span>Políglota</span></h1>
     <p class="tagline">Escribe una frase en español y proyéctala en todos los idiomas de tu clase.</p>
@@ -718,6 +720,12 @@ window.addEventListener('resize', () => {
   clearTimeout(resizeT);
   resizeT = setTimeout(() => { fitHead(); layout(page); }, 200);
 });
+
+// Versión publicada: version.json lo rellena GitHub Pages en cada publicación
+fetch('version.json', { cache: 'no-store' })
+  .then(r => r.ok ? r.json() : null)
+  .then(v => { if (v && v.fecha && !v.fecha.includes('{')) $('version').textContent = 'Versión ' + v.fecha + (v.commit ? ' · ' + v.commit : ''); })
+  .catch(() => {});
 
 renderLangs();
 renderHistory();
