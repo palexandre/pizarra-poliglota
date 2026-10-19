@@ -341,12 +341,11 @@ $('mic').addEventListener('click', () => {
   rec = new SR();
   rec.lang = 'es-ES';
   rec.interimResults = true;
-  rec.continuous = true;
+  // Chrome para Android repite el texto acumulado en cada resultado del modo continuo
+  rec.continuous = !/Android/i.test(navigator.userAgent);
   const base = ta.value.trim();
   rec.onresult = ev => {
-    let said = '';
-    for (let i = 0; i < ev.results.length; i++) said += ev.results[i][0].transcript;
-    said = said.trim();
+    let said = joinResults(ev.results);
     if (said) said = said.charAt(0).toUpperCase() + said.slice(1);
     ta.value = base ? base + ' ' + said : said;
     cfg.draft = ta.value; save();
@@ -362,6 +361,20 @@ $('mic').addEventListener('click', () => {
     $('mic').classList.add('on'); $('mic').querySelector('span').textContent = 'Parar';
   } catch (e) { showMsg('No se ha podido iniciar el dictado.'); }
 });
+
+// Une los fragmentos dictados sin repetir: algunos navegadores devuelven cada
+// fragmento con todo el texto anterior incluido ("abrir", "abrir el", "abrir el libro")
+function joinResults(results) {
+  let text = '';
+  for (let i = 0; i < results.length; i++) {
+    const t = results[i][0].transcript.trim();
+    if (!t) continue;
+    const a = text.toLowerCase(), b = t.toLowerCase();
+    if (!text || b.startsWith(a)) text = t;
+    else if (!a.endsWith(b)) text += ' ' + t;
+  }
+  return text;
+}
 
 // ---------- Idiomas ----------
 let onlySelected = false;
